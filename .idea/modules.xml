@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/kafka-project.iml" filepath="$PROJECT_DIR$/.idea/kafka-project.iml" />
+      <module fileurl="file://$PROJECT_DIR$/structured_streaming/structured_streaming.iml" filepath="$PROJECT_DIR$/structured_streaming/structured_streaming.iml" />
+      <module fileurl="file://$PROJECT_DIR$/tokafka/tokafka.iml" filepath="$PROJECT_DIR$/tokafka/tokafka.iml" />
+    </modules>
+  </component>
+</project>
