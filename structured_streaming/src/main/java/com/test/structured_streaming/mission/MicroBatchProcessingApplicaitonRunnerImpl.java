@@ -4,13 +4,8 @@ package com.test.structured_streaming.mission;
 import com.alibaba.fastjson.JSONObject;
 import com.test.structured_streaming.pojo.Record;
 
-import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.Table;
+
+import com.test.structured_streaming.utils.HBaseUtils;
 import org.apache.spark.api.java.function.VoidFunction2;
 import org.apache.spark.sql.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,9 +26,7 @@ import java.util.function.Consumer;
 @Component
 public class MicroBatchProcessingApplicaitonRunnerImpl  implements   Serializable {
 
-    @Autowired
-    private Connection hbaseConnection;
-
+    public Map<String,Object> map=new HashMap<String,Object>();
     @PostConstruct
     public void run( ) throws Exception {
         System.out.println("微批处理");
@@ -43,12 +36,44 @@ public class MicroBatchProcessingApplicaitonRunnerImpl  implements   Serializabl
                 .master("local[*]") //本地模式,多线程并行处理
                 .getOrCreate();
 
+
+//        HBaseUtils.delByRowkey("ns1:t2","cf1","0");
+//        HBaseUtils.delByRowkey("ns1:t2","cf1","1");
+        //删除掉offset，测试结果是否正常
+
+        //hbase获取offset
+        Map<String, Object> oneRow0 = HBaseUtils.getOneRow("ns1:t2", "0");
+        Map<String, Object> oneRow1 = HBaseUtils.getOneRow("ns1:t2", "1");
+        String offset="{\"topic1\":{";
+        if (oneRow0!=null){
+              offset+="\"0\":"+oneRow0.get("offset");
+            if(oneRow1!=null){
+                offset+=",\"1\":"+oneRow1.get("offset")+"}}";
+
+            }else{
+                offset+="}}";
+            }
+        }  else{
+            if(oneRow1!=null){
+                offset+="\"1\":"+oneRow1.get("offset")+"}}";
+
+            }else{
+                offset="earliest";
+            }
+
+        }
+
+
+
+//        String offset="{\"topic1\":{\"0\":"+oneRow0.get("offset")+",\"1\":"+oneRow1.get("offset")+"}}";
+        System.out.println(offset);
+
         Dataset<Row> df = spark
                 .readStream()
                 .format("kafka")
                 .option("kafka.bootstrap.servers", "192.168.43.101:9092")
                 .option("subscribe", "topic1")//订阅主题
-                .option("startingOffsets","{\"topic1\":{\"0\":80,\"1\":80}}")//earliest是从最早开始消费，write指定了checkpointlocation参数，后续消费从上次offset开始
+                .option("startingOffsets",offset)//earliest是从最早开始消费，write指定了checkpointlocation参数，后续消费从上次offset开始
                 //如果同时指定startingOffsets和checkpointLocation，以checkpointLocation为准
                 //根据业务逻辑，更适合使用startingOffsets，checkpointLocation放弃不使用
                 .option("maxOffsetsPerTrigger", "100")//设置最大偏移量,如果是100，基本是每个分区取50条
@@ -80,6 +105,7 @@ public class MicroBatchProcessingApplicaitonRunnerImpl  implements   Serializabl
                     @Override
                     public void accept(Row row) {
                         Record record = JSONObject.parseObject((String) row.get(0), Record.class);
+                        //原来的项目里，row.get(0)需要判断是不是jsonobject
                         record.setPartition((Integer) row.get(1));
                         record.setOffset((Long) row.get(2));
                         beanlist.add(record);
@@ -125,14 +151,26 @@ public class MicroBatchProcessingApplicaitonRunnerImpl  implements   Serializabl
                 for(Row a :rowList){
                     //这个循环中存起来，我们并没有什么逻辑，直接存入hbase
 //                    System.out.println(a);
-                    try (Table table = hbaseConnection.getTable(TableName.valueOf("ns1:t1"))) {
-                        Result result = table.get(new Get("1".getBytes()));
-
-
-                        // 列名为starttime，最后一条就是该航班最新的航迹
-                        System.out.println(result.listCells());
+                    map.put("number",a.get(0));
+                    map.put("time",a.get(1));
+                    HBaseUtils.putMapDataByRowkey("ns1:t2", "cf1", map,a.get(0)+""+a.get(1));
+                    //感觉加上存入就慢了很多
+                    //存完数据，存offset,因为只有两个分区
+                    map.clear();
+                    map.put("partition",a.get(2));
+                    map.put("offset",a.get(3));
+                    Iterator iter = map.entrySet().iterator();
+                    while (iter.hasNext()) {
+                        Map.Entry entry = (Map.Entry) iter.next();
+                        Object key = entry.getKey();
+                        Object val = entry.getValue();
+                        System.out.println(key+"=="+val);
                     }
 
+
+                    HBaseUtils.putMapDataByRowkey("ns1:t2", "cf1", map,a.get(2).toString());
+                    map.clear();
+                    //这里有点细微的小问题，要保证数据和offset同时成功或者同时失败,省略不写了
                 }
             }
         }

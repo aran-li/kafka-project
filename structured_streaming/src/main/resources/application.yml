@@ -1,4 +1,0 @@
-hbase:
-conf:
-confMaps:
-"hbase.zookeeper.quorum": 'e2309h2116.51mypc.cn:2181'
